@@ -1,0 +1,32 @@
+[gd_scene load_steps=3 format=3 uid="uid://b87laom2gean8"]
+
+[ext_resource type="Script" path="res://Scenes/Menu.cs" id="1_7g80k"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_hg1xd"]
+font_size = 96
+
+[node name="Menu" type="Node2D"]
+script = ExtResource("1_7g80k")
+
+[node name="connectButton" type="Button" parent="."]
+offset_left = 270.0
+offset_top = 200.0
+offset_right = 370.0
+offset_bottom = 232.0
+text = "Connect"
+
+[node name="cancelButton" type="Button" parent="."]
+offset_left = 270.0
+offset_top = 250.0
+offset_right = 370.0
+offset_bottom = 282.0
+text = "Cancel
+"
+
+[node name="titleLabel" type="Label" parent="."]
+offset_left = 160.0
+offset_right = 480.0
+offset_bottom = 150.0
+text = "PONG"
+label_settings = SubResource("LabelSettings_hg1xd")
+horizontal_alignment = 1
