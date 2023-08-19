@@ -15,7 +15,17 @@ offset_right = 370.0
 offset_bottom = 232.0
 text = "Connect"
 
-[node name="cancelButton" type="Button" parent="."]
+[node name="findMatchButton" type="Button" parent="."]
+visible = false
+offset_left = 270.0
+offset_top = 250.0
+offset_right = 370.0
+offset_bottom = 282.0
+text = "Find Match
+"
+
+[node name="cancelMatchButton" type="Button" parent="."]
+visible = false
 offset_left = 270.0
 offset_top = 250.0
 offset_right = 370.0

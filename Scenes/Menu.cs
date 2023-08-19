@@ -1,71 +1,123 @@
 using Godot;
 using Nakama;
+using NakamaGodotPong.Network;
+using NakamaGodotPong.Players;
+using Pong.NakamaMultiplayer;
 
 public partial class Menu : Node2D
 {
+    GodotLogger _logger;
+
     public Node CurrentScene { get; set; }
 
 	Button _connectButton;
-    Button _cancelButton;
+    Button _findMatchButton;
+    Button _cancelMatchButton;
+
+    PlayerProfile _playerProfile;
+    NakamaConnection _nakamaConnection;
+    NetworkGameManager _networkGameManager;
 
     // Called when the node enters the scene tree for the first time.
     public override void _Ready()
-	{
+    {
+        _logger = new GodotLogger("Nakama", GodotLogger.LogLevel.DEBUG);
+
+        _playerProfile = PlayerProfile.LoadOrCreate("./godotPong.json");
+        _nakamaConnection = new NakamaConnection(_logger, _playerProfile);
+
+        _networkGameManager = new NetworkGameManager(_logger, _nakamaConnection);
+
         Viewport root = GetTree().Root;
         CurrentScene = root.GetChild(root.GetChildCount() - 1);
         
         _connectButton = GetNode<Button>("connectButton");
         _connectButton.Pressed += ConnectButton_Pressed;
 
-        _cancelButton = GetNode<Button>("cancelButton");
-        _cancelButton.Pressed += CancelButton_Pressed;
+        _findMatchButton = GetNode<Button>("findMatchButton");
+        _findMatchButton.Pressed += FindMatchButton_Pressed;
+
+        _cancelMatchButton = GetNode<Button>("cancelMatchButton");
+        _cancelMatchButton.Pressed += CancelMatchButton_Pressed;
     }
 
     private async void ConnectButton_Pressed()
     {
         GD.Print("ConnectButton_Pressed");
 
-        var http_adapter = new GodotHttpAdapter();
-        // It's a Node, so it needs to be added to the scene tree.
-        // Consider putting this in an autoload singleton so it won't go away unexpectedly.
-        AddChild(http_adapter);
+        //var http_adapter = new GodotHttpAdapter();
+        //// It's a Node, so it needs to be added to the scene tree.
+        //// Consider putting this in an autoload singleton so it won't go away unexpectedly.
+        //AddChild(http_adapter);
 
-        const string scheme = "http";
-        const string host = "127.0.0.1";
-        const int port = 7350;
-        const string serverKey = "defaultkey";
+        //const string scheme = "http";
+        //const string host = "127.0.0.1";
+        //const int port = 7350;
+        //const string serverKey = "defaultkey";
 
-        // Pass in the 'http_adapter' as the last argument.
-        var client = new Client(scheme, host, port, serverKey, http_adapter)
-        {
-            // To log DEBUG messages to the Godot console.
-            Logger = new GodotLogger("Nakama", GodotLogger.LogLevel.DEBUG)
-        };
+        //// Pass in the 'http_adapter' as the last argument.
+        //var client = new Client(scheme, host, port, serverKey, http_adapter)
+        //{
+        //    // To log DEBUG messages to the Godot console.
+        //    Logger = new GodotLogger("Nakama", GodotLogger.LogLevel.DEBUG)
+        //};
 
-        ISession session;
-        try
-        {
-            session = await client.AuthenticateDeviceAsync(OS.GetUniqueId(), "TestUser", true);
-        }
-        catch (ApiResponseException e)
-        {
-            GD.PrintErr(e.ToString());
-            return;
-        }
+        //ISession session;
+        //try
+        //{
+        //    session = await client.AuthenticateDeviceAsync(OS.GetUniqueId(), "TestUser", true);
+        //}
+        //catch (ApiResponseException e)
+        //{
+        //    GD.PrintErr(e.ToString());
+        //    return;
+        //}
 
-        var websocket_adapter = new GodotWebSocketAdapter();
-        // Like the HTTP adapter, it's a Node, so it needs to be added to the scene tree.
-        // Consider putting this in an autoload singleton so it won't go away unexpectedly.
-        AddChild(websocket_adapter);
+        //var websocket_adapter = new GodotWebSocketAdapter();
+        //// Like the HTTP adapter, it's a Node, so it needs to be added to the scene tree.
+        //// Consider putting this in an autoload singleton so it won't go away unexpectedly.
+        //AddChild(websocket_adapter);
 
-        // Pass in the 'websocket_adapter' as the last argument.
+        //// Pass in the 'websocket_adapter' as the last argument.
 
-        //GotoScene("res://Scenes/Game.tscn");
+        await _networkGameManager.Connect();
+        _nakamaConnection.Socket.ReceivedMatchmakerMatched += OnReceivedMatchmakerMatched;
+
+        _connectButton.Text = "Connected";
+        _connectButton.Disabled = true;
+        _findMatchButton.Visible = true;
     }
 
-    private void CancelButton_Pressed()
+    /// <summary>
+    /// Called when a MatchmakerMatched event is received from the Nakama server.
+    /// </summary>
+    /// <param name="matched">The MatchmakerMatched data.</param>
+    public void OnReceivedMatchmakerMatched(IMatchmakerMatched matched)
     {
-        GD.Print("CancelButton_Pressed");
+        _logger.DebugFormat($"NakamaMultiplayerGame.OnReceivedMatchmakerMatched");
+        _logger.DebugFormat($"Changing game phase to begin a new play session");
+
+        GotoScene("res://Scenes/Game.tscn");
+    }
+
+    private async void FindMatchButton_Pressed()
+    {
+        GD.Print("FindMatchButton_Pressed");
+
+        _findMatchButton.Visible = false;
+        _cancelMatchButton.Visible = true;
+
+        await _nakamaConnection.FindMatch();
+    }
+
+    private async void CancelMatchButton_Pressed()
+    {
+        GD.Print("CancelMatchButton_Pressed");
+
+        _findMatchButton.Visible = true;
+        _cancelMatchButton.Visible = false;
+
+        await _nakamaConnection.CancelMatchmaking();
     }
 
     public void GotoScene(string path)
