@@ -2,7 +2,7 @@
 
 using Nakama;
 
-namespace Pong.NakamaMultiplayer.Players;
+namespace NakamaGodotPong.Players;
 
 public class RemotePlayerNetworkData
 {

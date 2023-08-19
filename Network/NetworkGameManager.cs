@@ -4,24 +4,27 @@
 
 using Godot;
 using Nakama;
-using NakamaGodotPong.Network;
 using NakamaGodotPong.Players;
 using Newtonsoft.Json;
-using Pong.NakamaMultiplayer.Players;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Pong.NakamaMultiplayer;
+namespace NakamaGodotPong.Network;
 
-public record SpawnedRemotePlayerEventArgs(
+public record SpawnedPlayerEventArgs(
+    Player Player,
     string SessionId
 );
 
-public record ReceivedRemotePlayerPositionEventArgs(
+public record ReceivedRemotePlayerPaddleStateEventArgs(
+float TotalSeconds,
     Vector2 Position,
+    Vector2 Velocity,
+    Vector2 TankInput,
     string SessionId
 );
 
@@ -36,7 +39,8 @@ public record ReceivedRemoteScoreEventArgs(
 );
 
 public record RemovedPlayerEventArgs(
-    string SessionId
+    string SessionId,
+    Player Player
 );
 
 /// <summary>
@@ -44,15 +48,15 @@ public record RemovedPlayerEventArgs(
 /// </summary>
 public class NetworkGameManager
 {
-    public event EventHandler SpawnedLocalPlayer;
-    public event EventHandler<SpawnedRemotePlayerEventArgs> SpawnedRemotePlayer;
-    public event EventHandler<ReceivedRemotePlayerPositionEventArgs> ReceivedRemotePlayerPosition;
+    public event EventHandler<SpawnedPlayerEventArgs> SpawnedLocalPlayer;
+    public event EventHandler<SpawnedPlayerEventArgs> SpawnedRemotePlayer;
+    public event EventHandler<ReceivedRemotePlayerPaddleStateEventArgs> ReceivedRemotePlayerPaddleState;
     public event EventHandler<ReceivedRemoteBallStateEventArgs> ReceivedRemoteBallState;
     public event EventHandler<ReceivedRemoteScoreEventArgs> ReceivedRemoteScore;
     public event EventHandler<RemovedPlayerEventArgs> RemovedPlayer;
 
     readonly GodotLogger _logger;
-    
+
     //Multiplayer
     readonly NakamaConnection _nakamaConnection;
 
@@ -60,7 +64,7 @@ public class NetworkGameManager
     IUserPresence _localUserPresence;
     IMatch _currentMatch;
 
-    readonly IDictionary<string, Player> _players;
+    public IDictionary<string, Player> Players { get; private set; }
     Player _localPlayer;
 
     public bool IsHost => (_hostPresence?.SessionId ?? "host") == (_localUserPresence?.SessionId ?? "user");
@@ -72,7 +76,7 @@ public class NetworkGameManager
         _logger = logger;
         _nakamaConnection = nakamaConnection;
 
-        _players = new Dictionary<string, Player>();
+        Players = new Dictionary<string, Player>();
     }
 
     public async Task Connect()
@@ -136,33 +140,20 @@ public class NetworkGameManager
     /// <param name="matchState">The MatchState data.</param>
     public void OnReceivedMatchState(IMatchState matchState)
     {
-        _logger.DebugFormat($"OnReceivedMatchState: {matchState.OpCode}");
-
-        if (!_players.TryGetValue(matchState.UserPresence.SessionId, out var player))
+        if (!Players.TryGetValue(matchState.UserPresence.SessionId, out var player))
             return;
 
         //a If the incoming data is not related to this remote player, ignore it and return early.
-        var networkPlayer = player as NetworkPlayer;
+        var networkPlayer = player as RemotePlayer;
         if (matchState.UserPresence.SessionId != networkPlayer?.NetworkData?.User?.SessionId)
             return;
 
         // Decide what to do based on the Operation Code of the incoming state data as defined in OpCodes.
         switch (matchState.OpCode)
         {
-            case OpCodes.VelocityAndPosition:
-                UpdateVelocityAndPositionFromState(matchState.State, networkPlayer);
-                break;
-
-            case OpCodes.DirectionAndPosition:
-                UpdateDirectionAndPositionFromState(matchState.State, networkPlayer);
-                break;
-
-            //case OpCodes.Input:
-            //    SetInputFromState(matchState.State);
-            //    break;
-
-            case OpCodes.Scored:
-                UpdateScoreFromState(matchState.State);
+            case OpCodes.PADDLE_PACKET:
+                //UpdateTankStateFromState(matchState.State, networkPlayer);
+                UpdateTankStateFromState(matchState.State, networkPlayer);
                 break;
 
             default:
@@ -185,11 +176,11 @@ public class NetworkGameManager
         _localUserPresence = null;
 
         // Destroy all existing player.
-        foreach (var player in _players.Values)
+        foreach (var player in Players.Values)
             player.Destroy();
 
         // Clear the players array.
-        _players.Clear();
+        Players.Clear();
     }
 
     void SpawnPlayer(string matchId, IUserPresence userPresence)
@@ -197,7 +188,7 @@ public class NetworkGameManager
         _logger.DebugFormat($"SpawnPlayer: {userPresence}");
 
         // If the player has already been spawned, return early.
-        if (_players.ContainsKey(userPresence.SessionId))
+        if (Players.ContainsKey(userPresence.SessionId))
         {
             return;
         }
@@ -214,11 +205,11 @@ public class NetworkGameManager
             player = new LocalPlayer();
             _localPlayer = player;
 
-            SpawnedLocalPlayer?.Invoke(this, EventArgs.Empty);
+            SpawnedLocalPlayer?.Invoke(this, new SpawnedPlayerEventArgs(player, userPresence.SessionId));
         }
         else
         {
-            player = new NetworkPlayer
+            player = new RemotePlayer
             {
                 NetworkData = new RemotePlayerNetworkData
                 {
@@ -227,45 +218,54 @@ public class NetworkGameManager
                 }
             };
 
-            SpawnedRemotePlayer?.Invoke(this, new SpawnedRemotePlayerEventArgs(userPresence.SessionId));
+            SpawnedRemotePlayer?.Invoke(this, new SpawnedPlayerEventArgs(player, userPresence.SessionId));
         }
 
         // Add the player to the players array.
-        _players.Add(userPresence.SessionId, player);
+        Players.Add(userPresence.SessionId, player);
     }
 
     void RemovePlayer(string sessionId)
     {
-        if (!_players.ContainsKey(sessionId))
+        if (!Players.TryGetValue(sessionId, out var player))
             return;
 
-        _players.Remove(sessionId);
+        Players.Remove(sessionId);
 
-        RemovedPlayer?.Invoke(this, new RemovedPlayerEventArgs(sessionId));
+        RemovedPlayer?.Invoke(this, new RemovedPlayerEventArgs(sessionId, player));
     }
 
     /// <summary>
     /// Updates the player's velocity and position based on incoming state data.
     /// </summary>
     /// <param name="state">The incoming state byte array.</param>
-    private void UpdateVelocityAndPositionFromState(byte[] state, NetworkPlayer networkPlayer)
+    private void UpdateTankStateFromState(byte[] state, RemotePlayer networkPlayer)
     {
-        var stateDictionary = GetStateAsDictionary(state);
+        //TODO: fix the allocation here
+        var packetReader = new PacketReader(new MemoryStream(state));
 
-        var position = new Vector2(
-            float.Parse(stateDictionary["position.x"]),
-            float.Parse(stateDictionary["position.y"]));
+        var totalSeconds = packetReader.ReadSingle();
 
-        ReceivedRemotePlayerPosition?.Invoke(
+        var position = packetReader.ReadVector2();
+        var velocity = packetReader.ReadVector2();
+
+        var paddleInput = packetReader.ReadVector2();
+        
+        ReceivedRemotePlayerPaddleState?.Invoke(
             this,
-            new ReceivedRemotePlayerPositionEventArgs(position, networkPlayer.NetworkData.User.SessionId));
+            new ReceivedRemotePlayerPaddleStateEventArgs(
+                totalSeconds,
+                position,
+                velocity,
+                paddleInput,
+                networkPlayer.NetworkData.User.SessionId));
     }
 
     /// <summary>
     /// Updates the ball's direction and position based on incoming state data.
     /// </summary>
     /// <param name="state">The incoming state byte array.</param>
-    private void UpdateDirectionAndPositionFromState(byte[] state, NetworkPlayer networkPlayer)
+    private void UpdateDirectionAndPositionFromState(byte[] state, RemotePlayer networkPlayer)
     {
         var stateDictionary = GetStateAsDictionary(state);
 
@@ -290,7 +290,7 @@ public class NetworkGameManager
 
         var player1Score = int.Parse(stateDictionary["player1.score"]);
         var player2Score = int.Parse(stateDictionary["player2.score"]);
-        
+
         ReceivedRemoteScore?.Invoke(
             this,
             new ReceivedRemoteScoreEventArgs(player1Score, player2Score));

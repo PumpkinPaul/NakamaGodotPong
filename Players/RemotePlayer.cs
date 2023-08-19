@@ -1,8 +1,8 @@
 // Copyright Pumpkin Games Ltd. All Rights Reserved.
 
-namespace Pong.NakamaMultiplayer.Players;
+namespace NakamaGodotPong.Players;
 
-class NetworkPlayer : Player
+class RemotePlayer : Player
 {
     internal RemotePlayerNetworkData NetworkData { get; init; }
 }

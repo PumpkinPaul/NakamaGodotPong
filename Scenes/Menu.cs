@@ -2,7 +2,6 @@ using Godot;
 using Nakama;
 using NakamaGodotPong.Network;
 using NakamaGodotPong.Players;
-using Pong.NakamaMultiplayer;
 
 public partial class Menu : Node2D
 {
@@ -153,6 +152,8 @@ public partial class Menu : Node2D
         //GetTree().CurrentScene = CurrentScene;
 
         GetTree().Root.RemoveChild(oldScene);
+
+        ((Game)CurrentScene).SetNetworkGameManager(_networkGameManager);
     }
 
     // Called every frame. 'delta' is the elapsed time since the previous frame.

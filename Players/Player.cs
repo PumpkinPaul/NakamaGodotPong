@@ -1,6 +1,6 @@
 // Copyright Pumpkin Games Ltd. All Rights Reserved.
 
-namespace Pong.NakamaMultiplayer.Players;
+namespace NakamaGodotPong.Players;
 
 public class Player
 {
