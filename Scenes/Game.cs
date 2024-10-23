@@ -17,6 +17,8 @@ public partial class Game : Node2D
 
     NetworkGameManager _networkGameManager;
 
+    PackedScene _paddle = ResourceLoader.Load<PackedScene>("res://Scenes/Paddle.tscn");
+
     //Member variables
     Vector2 _screenSize = new(SCREEN_WIDTH, SCREEN_HEIGHT);
     Vector2 _padSize;
@@ -26,11 +28,9 @@ public partial class Game : Node2D
     float _ballSpeed = INITIAL_BALL_SPEED; //Speed of the ball (also in pixels/second)
     const int PAD_SPEED = 150; // Constant for pads speed
 
-    const int PLAYER_OFFSET_X = 32;
-
     readonly Vector2[] _playerSpawnPoints = new[] {
-        new Vector2(PLAYER_OFFSET_X, SCREEN_HEIGHT / 2),
-        new Vector2(SCREEN_WIDTH - PLAYER_OFFSET_X, SCREEN_HEIGHT / 2)
+        new Vector2(67, 183),
+        new Vector2(577, 183)
     };
 
     int _playerSpawnPointsIdx = 0;
@@ -137,6 +137,9 @@ public partial class Game : Node2D
 
         _logger.DebugFormat($"PlayGamePhase.OnSpawnedLocalPlayer - create local paddle at position: {position}");
         _paddles[e.Player] = new Paddle(position, _screenSize);
+
+        var paddle = _paddle.Instantiate<Sprite2D>();
+        GetTree().Root.AddChild(paddle);
 
         PrepareNextPlayer();
     }

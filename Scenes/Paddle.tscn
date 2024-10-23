@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://6junqhrdc1wg"]
+
+[ext_resource type="Texture2D" uid="uid://b748jktslf80d" path="res://Assets/left_pallete.png" id="2_wv4jv"]
+
+[node name="Paddle" type="Sprite2D"]
+texture = ExtResource("2_wv4jv")
